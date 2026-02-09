@@ -195,15 +195,16 @@ public class PharmacyWorkflowHelper {
         // Menu display
         while (running) {
             System.out.println("\n=== Pharmacy Workflow Helper ===");
-            System.out.println("Current Day: " + currentDay);
             System.out.println("1) Add order (or update if ID exists)");
-            System.out.println("2) View all orders (sorted)");
-            System.out.println("3) View DUE TODAY");
-            System.out.println("4) View OVERDUE");
-            System.out.println("5) Generate scripts for an order");
-            System.out.println("6) Advance day (+1)");
-            System.out.println("7) Save report to file");
-            System.out.println("8) Exit");
+            System.out.println("2) Update existing order (explicit)");
+            System.out.println("3) View all orders (sorted)");
+            System.out.println("4) View WORK QUEUE");
+            System.out.println("5) View DUE TODAY");
+            System.out.println("6) View OVERDUE");
+            System.out.println("7) Generate scripts for an order");
+            System.out.println("8) Advance day (+1)");
+            System.out.println("9) Save report to file");
+            System.out.println("10) Exit");
 
             System.out.print("Please select a menu option: ");
 
@@ -211,17 +212,21 @@ public class PharmacyWorkflowHelper {
 
             switch (choice) {
                 case "1" -> addOrUpdateFlow(sc, manager, currentDay);
-                case "2" -> viewAllFlow(manager, currentDay);
-                case "3" -> viewDueTodayFlow(manager, currentDay);
-                case "4" -> viewOverdueFlow(manager, currentDay);
-                case "5" -> scriptsFlow(sc, manager, scripts);
-                case "6" -> {
+                case "2" -> updateOrderFlow(sc, manager, currentDay);
+                case "3" -> viewAllFlow(manager, currentDay);
+                case "4" -> viewWorkQueueFlow(manager, currentDay);
+                case "5" -> viewDueTodayFlow(manager, currentDay);
+                case "6" -> viewOverdueFlow(manager, currentDay);
+                case "7" -> scriptsFlow(sc, manager, scripts);
+                case "8" -> {
                     currentDay++;
                     System.out.println("Day advanced. Current Day = " + currentDay);
                 }
-                case "7" -> saveReportFlow(manager, currentDay);
-                case "8" -> { running = false; System.out.println("Goodbye."); }
-
+                case "9" -> saveReportFlow(manager, currentDay);
+                case "10" -> {
+                    running = false;
+                    System.out.println("Goodbye.");
+                }
                 default -> System.out.println("Invalid option. Try again.");
             }
         }
@@ -313,36 +318,105 @@ public class PharmacyWorkflowHelper {
     }
 
     private static void saveReportFlow(OrderManager manager, int currentDay) {
-    String filename = "report_day" + currentDay + ".txt";
+        String filename = "report_day" + currentDay + ".txt";
 
-    List<Order> all = manager.getAllSorted();
-    List<Order> dueToday = manager.dueToday(currentDay);
-    List<Order> overdue = manager.overdue(currentDay);
+        List<Order> all = manager.getAllSorted();
+        List<Order> dueToday = manager.dueToday(currentDay);
+        List<Order> overdue = manager.overdue(currentDay);
 
-    StringBuilder sb = new StringBuilder();
-    sb.append("=== Pharmacy Workflow Helper Report ===\n");
-    sb.append("Day: ").append(currentDay).append("\n\n");
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== Pharmacy Workflow Helper Report ===\n");
+        sb.append("Day: ").append(currentDay).append("\n\n");
 
-    sb.append("Totals:\n");
-    sb.append("  All orders: ").append(all.size()).append("\n");
-    sb.append("  Due today:  ").append(dueToday.size()).append("\n");
-    sb.append("  Overdue:    ").append(overdue.size()).append("\n\n");
+        sb.append("Totals:\n");
+        sb.append("  All orders: ").append(all.size()).append("\n");
+        sb.append("  Due today:  ").append(dueToday.size()).append("\n");
+        sb.append("  Overdue:    ").append(overdue.size()).append("\n\n");
 
-    sb.append("--- Work Queue (sorted) ---\n");
-    if (all.isEmpty()) {
-        sb.append("No orders.\n");
-    } else {
-        for (Order o : all) {
-            sb.append(o.toDisplayString(currentDay)).append("\n");
+        sb.append("--- Work Queue (sorted) ---\n");
+        if (all.isEmpty()) {
+            sb.append("No orders.\n");
+        } else {
+            for (Order o : all) {
+                sb.append(o.toDisplayString(currentDay)).append("\n");
+            }
         }
+
+        try (java.io.PrintWriter out = new java.io.PrintWriter(filename)) {
+            out.print(sb.toString());
+            System.out.println("Report saved to: " + filename);
+        } catch (java.io.IOException e) {
+            System.out.println("Error saving report: " + e.getMessage());
+        }
+
     }
 
-    try (java.io.PrintWriter out = new java.io.PrintWriter(filename)) {
-        out.print(sb.toString());
-        System.out.println("Report saved to: " + filename);
-    } catch (java.io.IOException e) {
-        System.out.println("Error saving report: " + e.getMessage());
+    private static void updateOrderFlow(Scanner sc, OrderManager manager, int currentDay) {
+        System.out.print("Enter existing order ID to update: ");
+        String orderId = sc.nextLine().trim();
+
+        Order existing = manager.findOrder(orderId);
+        if (existing == null) {
+            System.out.println("Order not found. Use option 1 to add a new order.");
+            return;
+        }
+
+        Priority newPriority;
+        try {
+            System.out.print("Enter NEW priority (STAT / URGENT / ROUTINE): ");
+            newPriority = Priority.fromString(sc.nextLine());
+        } catch (Exception e) {
+            System.out.println("Invalid priority.");
+            return;
+        }
+
+        System.out.print("New notes (leave blank to keep existing): ");
+        String newNotes = sc.nextLine();
+
+        // Update using the same “re-triaged today” behavior
+        existing.update(newPriority, newNotes, currentDay);
+
+        System.out.println("Order UPDATED:");
+        System.out.println(existing.toDisplayString(currentDay));
     }
-}
+
+    private static void viewWorkQueueFlow(OrderManager manager, int currentDay) {
+        List<Order> all = manager.getAllSorted();
+        if (all.isEmpty()) {
+            System.out.println("No orders found.");
+            return;
+        }
+
+        List<Order> dueToday = new ArrayList<>();
+        List<Order> onTrack = new ArrayList<>();
+        List<Order> overdue = new ArrayList<>();
+
+        for (Order o : all) {
+            String status = o.getStatus(currentDay);
+            switch (status) {
+                case "DUE_TODAY" -> dueToday.add(o);
+                case "OVERDUE" -> overdue.add(o);
+                default -> onTrack.add(o);
+            }
+        }
+
+        // Ensure dueToday shows STAT before URGENT
+        dueToday.sort(Comparator.comparingInt(o -> o.getPriority().rank()));
+
+        System.out.println("\n--- WORK QUEUE ---");
+
+        System.out.println("\n[DUE TODAY]");
+        if (dueToday.isEmpty()) System.out.println("None.");
+        else for (Order o : dueToday) System.out.println(o.toDisplayString(currentDay));
+
+        System.out.println("\n[ON TRACK]");
+        if (onTrack.isEmpty()) System.out.println("None.");
+        else for (Order o : onTrack) System.out.println(o.toDisplayString(currentDay));
+
+        System.out.println("\n[OVERDUE]");
+        if (overdue.isEmpty()) System.out.println("None.");
+        else for (Order o : overdue) System.out.println(o.toDisplayString(currentDay));
+    }
+
 
 } // End Program
