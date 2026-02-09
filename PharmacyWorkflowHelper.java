@@ -192,6 +192,7 @@ public class PharmacyWorkflowHelper {
         int currentDay = 0;
         boolean running = true;
 
+        // Menu display
         while (running) {
             System.out.println("\n=== Pharmacy Workflow Helper ===");
             System.out.println("Current Day: " + currentDay);
@@ -201,8 +202,10 @@ public class PharmacyWorkflowHelper {
             System.out.println("4) View OVERDUE");
             System.out.println("5) Generate scripts for an order");
             System.out.println("6) Advance day (+1)");
-            System.out.println("7) Exit");
-            System.out.print("Choose: ");
+            System.out.println("7) Save report to file");
+            System.out.println("8) Exit");
+
+            System.out.print("Please select a menu option: ");
 
             String choice = sc.nextLine().trim();
 
@@ -216,10 +219,9 @@ public class PharmacyWorkflowHelper {
                     currentDay++;
                     System.out.println("Day advanced. Current Day = " + currentDay);
                 }
-                case "7" -> {
-                    running = false;
-                    System.out.println("Goodbye.");
-                }
+                case "7" -> saveReportFlow(manager, currentDay);
+                case "8" -> { running = false; System.out.println("Goodbye."); }
+
                 default -> System.out.println("Invalid option. Try again.");
             }
         }
@@ -309,4 +311,38 @@ public class PharmacyWorkflowHelper {
         System.out.println(scripts.compoundingScript(o));
         System.out.println(scripts.deliveryScript(o));
     }
+
+    private static void saveReportFlow(OrderManager manager, int currentDay) {
+    String filename = "report_day" + currentDay + ".txt";
+
+    List<Order> all = manager.getAllSorted();
+    List<Order> dueToday = manager.dueToday(currentDay);
+    List<Order> overdue = manager.overdue(currentDay);
+
+    StringBuilder sb = new StringBuilder();
+    sb.append("=== Pharmacy Workflow Helper Report ===\n");
+    sb.append("Day: ").append(currentDay).append("\n\n");
+
+    sb.append("Totals:\n");
+    sb.append("  All orders: ").append(all.size()).append("\n");
+    sb.append("  Due today:  ").append(dueToday.size()).append("\n");
+    sb.append("  Overdue:    ").append(overdue.size()).append("\n\n");
+
+    sb.append("--- Work Queue (sorted) ---\n");
+    if (all.isEmpty()) {
+        sb.append("No orders.\n");
+    } else {
+        for (Order o : all) {
+            sb.append(o.toDisplayString(currentDay)).append("\n");
+        }
+    }
+
+    try (java.io.PrintWriter out = new java.io.PrintWriter(filename)) {
+        out.print(sb.toString());
+        System.out.println("Report saved to: " + filename);
+    } catch (java.io.IOException e) {
+        System.out.println("Error saving report: " + e.getMessage());
+    }
+}
+
 } // End Program

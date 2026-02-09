@@ -1,0 +1,12 @@
+=== Pharmacy Workflow Helper Report ===
+Day: 0
+
+Totals:
+  All orders: 3
+  Due today:  2
+  Overdue:    0
+
+--- Work Queue (sorted) ---
+RX123 | URGENT | received Day 0 | due Day 0 | DUE_TODAY | notes: PT found old order
+RX124 | URGENT | received Day 0 | due Day 0 | DUE_TODAY | notes: Overnight
+RX125 | ROUTINE | received Day 0 | due Day 2 | ON_TRACK | notes: 2 days out
