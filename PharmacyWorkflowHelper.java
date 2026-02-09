@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Scanner;       // Import libraries
 
+// Establish priority cases
 enum Priority {
     STAT, URGENT, ROUTINE;
 
@@ -29,10 +30,10 @@ enum Priority {
 
 class Order {
     private final String orderId;     // non-PHI identifier to follow HIPAA guidelines
-    private final Priority priority;
-    private final int receivedDay;
-    private final int dueDay;
-    private final String notes;
+    private Priority priority;
+    private int receivedDay;
+    private int dueDay;
+    private String notes;
 
     Order(String orderId, Priority priority, int receivedDay, String notes) {
         this.orderId = orderId;
@@ -43,17 +44,36 @@ class Order {
     }
 
     private int computeDueDay(Priority p, int receivedDay) {
+        // Your current rules:
+        // STAT -> same day
+        // URGENT -> same day (overnight)
+        // ROUTINE -> +2 days
         return switch (p) {
-            case STAT, URGENT -> receivedDay;      // due same day
-            case ROUTINE -> receivedDay + 2;       // due in 2 days
+            case STAT, URGENT -> receivedDay;
+            case ROUTINE -> receivedDay + 2;
         };
     }
 
+// --- getters ---
     String getOrderId() { return orderId; }
     Priority getPriority() { return priority; }
     int getReceivedDay() { return receivedDay; }
     int getDueDay() { return dueDay; }
     String getNotes() { return notes; }
+
+    // --- update behavior (encapsulation) ---
+    void update(Priority newPriority, String newNotes, int currentDay) {
+        // Treat update as "this was re-triaged today"
+        this.receivedDay = currentDay;
+        this.priority = newPriority;
+        this.dueDay = computeDueDay(newPriority, currentDay);
+
+        if (newNotes != null) {
+            String trimmed = newNotes.trim();
+            // If user leaves notes blank during update, keep previous notes
+            if (!trimmed.isEmpty()) this.notes = trimmed;
+        }
+    }
 
     String getStatus(int currentDay) {
         if (currentDay > dueDay) return "OVERDUE";
@@ -63,9 +83,9 @@ class Order {
 
     String toDisplayString(int currentDay) {
         return String.format(
-            "%s | %s | received Day %d | due Day %d | %s | notes: %s",
-            orderId, priority, receivedDay, dueDay, getStatus(currentDay),
-            notes.isEmpty() ? "-" : notes
+                "%s | %s | received Day %d | due Day %d | %s | notes: %s",
+                orderId, priority, receivedDay, dueDay, getStatus(currentDay),
+                notes.isEmpty() ? "-" : notes
         );
     }
 }
@@ -73,24 +93,32 @@ class Order {
 class OrderManager {
     private final List<Order> orders = new ArrayList<>();
 
-    void addOrder(Order order) {
-        orders.add(order);
-    }
-
     Order findOrder(String orderId) {
+        String key = orderId.trim();
         for (Order o : orders) {
-            if (o.getOrderId().equalsIgnoreCase(orderId.trim())) return o;
+            if (o.getOrderId().equalsIgnoreCase(key)) return o;
         }
         return null;
     }
 
+    // Exception: Add if new, otherwise update existing record
+    boolean addOrUpdate(String orderId, Priority priority, String notes, int currentDay) {
+        Order existing = findOrder(orderId);
+        if (existing == null) {
+            orders.add(new Order(orderId, priority, currentDay, notes));
+            return false; // false = it was added (not updated)
+        } else {
+            existing.update(priority, notes, currentDay);
+            return true;  // true = it was updated
+        }
+    }
+
     List<Order> getAllSorted() {
-        // Sort by dueDay, then priority rank (STAT first), then orderId
         List<Order> copy = new ArrayList<>(orders);
         copy.sort(Comparator
-            .comparingInt(Order::getDueDay)
-            .thenComparingInt(o -> o.getPriority().rank())
-            .thenComparing(o -> o.getOrderId().toUpperCase())
+                .comparingInt(Order::getDueDay)
+                .thenComparingInt(o -> o.getPriority().rank())
+                .thenComparing(o -> o.getOrderId().toUpperCase())
         );
         return copy;
     }
@@ -101,8 +129,8 @@ class OrderManager {
             if (o.getDueDay() == currentDay) result.add(o);
         }
         result.sort(Comparator
-            .comparingInt(Order::getDueDay)
-            .thenComparingInt(o -> o.getPriority().rank())
+                .comparingInt(Order::getDueDay)
+                .thenComparingInt(o -> o.getPriority().rank())
         );
         return result;
     }
@@ -113,8 +141,8 @@ class OrderManager {
             if (currentDay > o.getDueDay()) result.add(o);
         }
         result.sort(Comparator
-            .comparingInt(Order::getDueDay)
-            .thenComparingInt(o -> o.getPriority().rank())
+                .comparingInt(Order::getDueDay)
+                .thenComparingInt(o -> o.getPriority().rank())
         );
         return result;
     }
@@ -124,29 +152,33 @@ class ScriptGenerator {
 
     String handoffScript(Order o) {
         return switch (o.getPriority()) {
-            case STAT -> "STAT — DO FIRST: " + baseLine(o) + " | Due: TODAY";
-            case URGENT -> "URGENT — EOD SHIP: " + baseLine(o) + " | Due: TODAY (overnight)";
-            case ROUTINE -> "ROUTINE: " + baseLine(o) + " | Due: Day " + o.getDueDay();
+            case STAT -> "STAT — DO FIRST: " + o.getOrderId() + " | Due: TODAY"
+                    + (o.getNotes().isEmpty() ? "" : " | Notes: " + o.getNotes());
+            case URGENT -> "URGENT — EOD SHIP: " + o.getOrderId() + " | Due: TODAY (overnight)"
+                    + (o.getNotes().isEmpty() ? "" : " | Notes: " + o.getNotes());
+            case ROUTINE -> "ROUTINE: " + o.getOrderId() + " | Due: Day " + o.getDueDay()
+                    + (o.getNotes().isEmpty() ? "" : " | Notes: " + o.getNotes());
         };
     }
 
     String compoundingScript(Order o) {
-        return "COMPOUND: " + baseLine(o)
-            + " | Priority: " + o.getPriority()
-            + " | Due Day: " + o.getDueDay()
-            + (o.getNotes().isEmpty() ? "" : " | Notes: " + o.getNotes());
+        return "COMPOUND: " + o.getOrderId()
+                + " | Priority: " + o.getPriority()
+                + " | Due Day: " + o.getDueDay()
+                + (o.getNotes().isEmpty() ? "" : " | Notes: " + o.getNotes());
     }
 
     String deliveryScript(Order o) {
-        return "DELIVERY: " + baseLine(o)
-            + " | Due Day: " + o.getDueDay()
-            + " | Type: " + (o.getPriority() == Priority.URGENT ? "Overnight" :
-                             o.getPriority() == Priority.STAT ? "Same-day" : "Standard")
-            + (o.getNotes().isEmpty() ? "" : " | Notes: " + o.getNotes());
-    }
+        String shipType = switch (o.getPriority()) {
+            case STAT -> "Same-day";
+            case URGENT -> "Overnight";
+            case ROUTINE -> "Standard";
+        };
 
-    private String baseLine(Order o) {
-        return o.getOrderId();
+        return "DELIVERY: " + o.getOrderId()
+                + " | Due Day: " + o.getDueDay()
+                + " | Type: " + shipType
+                + (o.getNotes().isEmpty() ? "" : " | Notes: " + o.getNotes());
     }
 }
 
@@ -163,7 +195,7 @@ public class PharmacyWorkflowHelper {
         while (running) {
             System.out.println("\n=== Pharmacy Workflow Helper ===");
             System.out.println("Current Day: " + currentDay);
-            System.out.println("1) Add order");
+            System.out.println("1) Add order (or update if ID exists)");
             System.out.println("2) View all orders (sorted)");
             System.out.println("3) View DUE TODAY");
             System.out.println("4) View OVERDUE");
@@ -175,7 +207,7 @@ public class PharmacyWorkflowHelper {
             String choice = sc.nextLine().trim();
 
             switch (choice) {
-                case "1" -> addOrderFlow(sc, manager, currentDay);
+                case "1" -> addOrUpdateFlow(sc, manager, currentDay);
                 case "2" -> viewAllFlow(manager, currentDay);
                 case "3" -> viewDueTodayFlow(manager, currentDay);
                 case "4" -> viewOverdueFlow(manager, currentDay);
@@ -195,7 +227,7 @@ public class PharmacyWorkflowHelper {
         sc.close();
     }
 
-    private static void addOrderFlow(Scanner sc, OrderManager manager, int currentDay) {
+    private static void addOrUpdateFlow(Scanner sc, OrderManager manager, int currentDay) {
         System.out.print("Enter order ID (non-PHI): ");
         String orderId = sc.nextLine().trim();
         if (orderId.isEmpty()) {
@@ -215,11 +247,15 @@ public class PharmacyWorkflowHelper {
         System.out.print("Notes (optional): ");
         String notes = sc.nextLine();
 
-        Order order = new Order(orderId, priority, currentDay, notes);
-        manager.addOrder(order);
+        boolean wasUpdated = manager.addOrUpdate(orderId, priority, notes, currentDay);
+        if (wasUpdated) {
+            System.out.println("Order existed — UPDATED (priority/notes/due day refreshed).");
+        } else {
+            System.out.println("New order ADDED.");
+        }
 
-        System.out.println("Order added.");
-        System.out.println("Due Day: " + order.getDueDay() + " (Status: " + order.getStatus(currentDay) + ")");
+        Order o = manager.findOrder(orderId);
+        System.out.println(o.toDisplayString(currentDay));
     }
 
     private static void viewAllFlow(OrderManager manager, int currentDay) {
@@ -228,7 +264,6 @@ public class PharmacyWorkflowHelper {
             System.out.println("No orders found.");
             return;
         }
-
         System.out.println("\n--- ALL ORDERS (sorted by due day, then priority) ---");
         for (Order o : list) {
             System.out.println(o.toDisplayString(currentDay));
@@ -241,7 +276,6 @@ public class PharmacyWorkflowHelper {
             System.out.println("No orders due today.");
             return;
         }
-
         System.out.println("\n--- DUE TODAY ---");
         for (Order o : list) {
             System.out.println(o.toDisplayString(currentDay));
@@ -254,7 +288,6 @@ public class PharmacyWorkflowHelper {
             System.out.println("No overdue orders.");
             return;
         }
-
         System.out.println("\n--- OVERDUE ---");
         for (Order o : list) {
             System.out.println(o.toDisplayString(currentDay));
@@ -276,4 +309,4 @@ public class PharmacyWorkflowHelper {
         System.out.println(scripts.compoundingScript(o));
         System.out.println(scripts.deliveryScript(o));
     }
-}
+} // End Program
