@@ -1,0 +1,8 @@
+# Java
+*.class
+
+# VS Code
+.vscode/
+
+# Visual Studio / workspace artifacts
+.vs/
