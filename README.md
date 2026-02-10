@@ -1,4 +1,4 @@
-# Pharmacy Workflow Helper (CIS-18A Course Project – Option 1)
+# Pharmacy Workflow Helper (CIS-18A Course Final Project)
 
 A simple Java console with Swing GUI program that helps triage pharmacy orders by priority and deadlines. It generates consistent handoff messages for compounding and delivery.
 
